@@ -52,10 +52,22 @@ function computeChon(myGender, moves) {
   let cur = me;
   for (const mv of moves) {
     if (mv.type === "parent") {
-      const p = add(mv.gender);
-      nodes[p].children.push(cur);
-      nodes[cur].parents.push(p);
-      cur = p;
+      // 같은 성별의 부모가 이미 있으면 그 사람을 재사용 (예: 형의 어머니 = 내 어머니)
+      const existing = nodes[cur].parents.find((pid) => nodes[pid].gender === mv.gender);
+      if (existing) {
+        cur = existing;
+      } else {
+        const p = add(mv.gender);
+        nodes[p].children.push(cur);
+        nodes[cur].parents.push(p);
+        // 반대 성별 부모가 이미 있으면 부부로 연결
+        const other = nodes[cur].parents.find((pid) => pid !== p && nodes[pid].spouse === null);
+        if (other) {
+          nodes[p].spouse = other;
+          nodes[other].spouse = p;
+        }
+        cur = p;
+      }
     } else if (mv.type === "child") {
       const c = add(mv.gender);
       nodes[cur].children.push(c);
@@ -68,6 +80,8 @@ function computeChon(myGender, moves) {
         nodes[f].children.push(cur);
         nodes[m].children.push(cur);
         nodes[cur].parents.push(f, m);
+        nodes[f].spouse = m;
+        nodes[m].spouse = f;
       }
       const sib = add(mv.gender);
       for (const pp of nodes[cur].parents) {
@@ -329,15 +343,23 @@ function analyze(myGender, chainKeys) {
   if (hasSpouse) res = nameInlaw(myGender, moves);
   else res = nameBlood(myGender, moves);
 
+  // 호칭 폴백 (정규 문법으로 안 떨어지는 우회 입력 대비)
+  let name = res?.name;
+  let sub = res?.sub || null;
+  if (!name) {
+    const targetGender = moves[moves.length - 1].gender;
+    if (chon === 0 && !inlaw) {
+      name = "본인 (나)";
+    } else if (chon === 0 && inlaw) {
+      name = targetGender === "M" ? "남편 (배우자)" : "아내 (배우자)";
+    } else {
+      name = `${chon}촌 (${inlaw ? "인척" : "혈족"})`;
+      sub = "표준 호칭이 정해지지 않은 관계예요";
+    }
+  }
+
   const inRange = inlaw ? chon <= 4 : chon <= 8;
-  return {
-    moves,
-    chon,
-    inlaw,
-    name: res?.name || `${chon}촌`,
-    sub: res?.sub || null,
-    inRange,
-  };
+  return { moves, chon, inlaw, name, sub, inRange };
 }
 
 /* =========================================================================
